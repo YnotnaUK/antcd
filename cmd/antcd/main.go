@@ -7,6 +7,7 @@ import (
 
 	"github.com/ynotnauk/antcd/internal/config"
 	"github.com/ynotnauk/antcd/internal/git"
+	"github.com/ynotnauk/antcd/internal/server"
 )
 
 func main() {
@@ -18,8 +19,18 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	log.Printf("Starting AntCD... Polling %s every %v", cfg.Git.Repo, cfg.Git.PollInterval)
+	// Channel to signal manual syncs via the web server
+	syncTrigger := make(chan struct{}, 1)
 
+	// Start web server in background
+	srv := server.NewServer(cfg.Server.Port, syncTrigger)
+	go func() {
+		if err := srv.Start(); err != nil {
+			log.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	log.Printf("Starting AntCD... Polling %s every %v", cfg.Git.Repo, cfg.Git.PollInterval)
 	watcher := git.NewWatcher(cfg.Git.Repo, cfg.Git.Branch, cfg.Git.Token)
 
 	ticker := time.NewTicker(cfg.Git.PollInterval)
@@ -28,9 +39,15 @@ func main() {
 	// Initial check
 	checkRepo(watcher)
 
-	// Polling loop
-	for range ticker.C {
-		checkRepo(watcher)
+	// Main event loop
+	for {
+		select {
+		case <-ticker.C:
+			checkRepo(watcher)
+		case <-syncTrigger:
+			log.Println("[TRIGGER] Manual/Webhook sync received!")
+			checkRepo(watcher)
+		}
 	}
 }
 
