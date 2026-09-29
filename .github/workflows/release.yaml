@@ -1,0 +1,57 @@
+name: Release Docker Image and Helm Chart
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      # Set short SHA output (e.g. abc1234)
+      - name: Set Git SHA
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 1. Build and push Docker image with both latest and SHA tags
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/antcd:latest
+            ghcr.io/${{ github.repository_owner }}/antcd:${{ steps.vars.outputs.sha_short }}
+
+      # 2. Package and push Helm chart
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+
+      - name: Package and Push Helm Chart
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          helm package chart
+          helm push antcd-*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+
+      # 3. Clean up older images (keep only the last 3 versions)
+      - name: Prune Old Docker Images
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: 'antcd'
+          package-type: 'container'
+          min-versions-to-keep: 3
