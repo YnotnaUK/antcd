@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -72,7 +73,12 @@ func reconcile(w *git.Watcher, applier *k8s.Applier, cfg *config.Config) {
 		return
 	}
 
-	log.Printf("[SYNC] New commit %s. Syncing manifests...", commit)
+	log.Printf("[SYNC] New commit %s detected. Syncing manifests...", commit)
+
+	if applier == nil {
+		log.Println("[WARN] Skipped apply: No cluster connected. Will retry on next check.")
+		return
+	}
 
 	// Create temp directory for cloning
 	tempDir, err := os.MkdirTemp("", "antcd-*")
@@ -87,17 +93,19 @@ func reconcile(w *git.Watcher, applier *k8s.Applier, cfg *config.Config) {
 		return
 	}
 
-	if applier == nil {
-		log.Println("[WARN] Skipped K8s apply: No cluster connected")
+	manifestDir := filepath.Join(tempDir, cfg.Git.Path)
+	if err := applyDirectory(manifestDir, applier, cfg.TargetNamespace); err != nil {
+		log.Printf("[ERROR] Failed applying manifests: %v. Will retry.", err)
 		return
 	}
 
-	manifestDir := filepath.Join(tempDir, cfg.Git.Path)
-	applyDirectory(manifestDir, applier, cfg.TargetNamespace)
+	// Only mark success if all steps passed!
+	w.RecordSuccess(commit)
+	log.Printf("[SUCCESS] Successfully applied commit %s", commit)
 }
 
-func applyDirectory(dir string, applier *k8s.Applier, defaultNamespace string) {
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+func applyDirectory(dir string, applier *k8s.Applier, defaultNamespace string) error {
+	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return err
 		}
@@ -109,11 +117,9 @@ func applyDirectory(dir string, applier *k8s.Applier, defaultNamespace string) {
 
 		data, err := os.ReadFile(path)
 		if err != nil {
-			log.Printf("[ERROR] Reading %s: %v", path, err)
-			return nil
+			return fmt.Errorf("reading %s: %w", path, err)
 		}
 
-		// Split multi-document YAMLs (separated by ---)
 		decoder := utilyaml.NewYAMLReader(bufio.NewReader(bytes.NewReader(data)))
 		for {
 			doc, err := decoder.Read()
@@ -125,15 +131,10 @@ func applyDirectory(dir string, applier *k8s.Applier, defaultNamespace string) {
 			}
 
 			if err := applier.ApplyManifest(context.Background(), doc, defaultNamespace); err != nil {
-				log.Printf("[ERROR] Applying %s: %v", filepath.Base(path), err)
-			} else {
-				log.Printf("[APPLIED] Successfully applied manifest from %s", filepath.Base(path))
+				return fmt.Errorf("applying %s: %w", filepath.Base(path), err)
 			}
+			log.Printf("[APPLIED] Successfully applied manifest from %s", filepath.Base(path))
 		}
 		return nil
 	})
-
-	if err != nil {
-		log.Printf("[ERROR] Walking directory %s: %v", dir, err)
-	}
 }

@@ -25,7 +25,7 @@ func NewWatcher(repoURL, branch, token string) *Watcher {
 	}
 }
 
-// CheckForUpdates returns true if the remote commit hash differs from the last seen hash.
+// CheckForUpdates returns (true, commitHash) if remote differs from the last applied commit.
 func (w *Watcher) CheckForUpdates() (bool, string, error) {
 	rem := gogit.NewRemote(memory.NewStorage(), &gitcfg.RemoteConfig{
 		Name: "origin",
@@ -40,10 +40,7 @@ func (w *Watcher) CheckForUpdates() (bool, string, error) {
 		}
 	}
 
-	// Light check: fetch remote references only, no cloning required
-	refs, err := rem.List(&gogit.ListOptions{
-		Auth: auth,
-	})
+	refs, err := rem.List(&gogit.ListOptions{Auth: auth})
 	if err != nil {
 		return false, "", fmt.Errorf("listing remote references: %w", err)
 	}
@@ -62,17 +59,17 @@ func (w *Watcher) CheckForUpdates() (bool, string, error) {
 		return false, "", fmt.Errorf("branch '%s' not found on remote", w.Branch)
 	}
 
-	if w.LastCommit == "" {
-		w.LastCommit = currentCommit
-		return true, currentCommit, nil // First run detected
-	}
-
+	// Needs apply if remote differs from our last successfully applied commit
 	if currentCommit != w.LastCommit {
-		w.LastCommit = currentCommit
-		return true, currentCommit, nil // New commit detected
+		return true, currentCommit, nil
 	}
 
 	return false, currentCommit, nil
+}
+
+// RecordSuccess marks the commit as successfully applied.
+func (w *Watcher) RecordSuccess(commit string) {
+	w.LastCommit = commit
 }
 
 // CloneToDir clones the target branch into a temporary local directory.
