@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  config.yaml: |
+    git:
+      repo: {{ .Values.git.repo | quote }}
+      branch: {{ .Values.git.branch | quote }}
+      path: {{ .Values.git.path | quote }}
+      pollInterval: {{ .Values.git.pollInterval | quote }}
+    server:
+      port: {{ .Values.service.port }}
+    targetNamespace: {{ .Values.targetNamespace | quote }}

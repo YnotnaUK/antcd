@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-sa
+      containers:
+        - name: antcd
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--config", "/etc/antcd/config.yaml"]
+          ports:
+            - containerPort: {{ .Values.service.port }}
+          {{- if .Values.git.token }}
+          env:
+            - name: ANTCD_GIT_TOKEN
+              value: {{ .Values.git.token | quote }}
+          {{- end }}x
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.service.port }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/antcd
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ .Release.Name }}-config
