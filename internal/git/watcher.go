@@ -5,6 +5,7 @@ import (
 
 	gogit "github.com/go-git/go-git/v5"
 	gitcfg "github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/storage/memory"
 )
@@ -72,4 +73,28 @@ func (w *Watcher) CheckForUpdates() (bool, string, error) {
 	}
 
 	return false, currentCommit, nil
+}
+
+// CloneToDir clones the target branch into a temporary local directory.
+func (w *Watcher) CloneToDir(targetDir string) error {
+	var auth *http.BasicAuth
+	if w.Token != "" {
+		auth = &http.BasicAuth{
+			Username: "oauth2",
+			Password: w.Token,
+		}
+	}
+
+	_, err := gogit.PlainClone(targetDir, false, &gogit.CloneOptions{
+		URL:           w.RepoURL,
+		ReferenceName: plumbing.ReferenceName("refs/heads/" + w.Branch),
+		SingleBranch:  true,
+		Depth:         1,
+		Auth:          auth,
+	})
+	if err != nil {
+		return fmt.Errorf("cloning repo: %w", err)
+	}
+
+	return nil
 }
