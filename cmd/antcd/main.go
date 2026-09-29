@@ -3,8 +3,10 @@ package main
 import (
 	"flag"
 	"log"
+	"time"
 
 	"github.com/ynotnauk/antcd/internal/config"
+	"github.com/ynotnauk/antcd/internal/git"
 )
 
 func main() {
@@ -16,8 +18,32 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	log.Printf("AntCD configured successfully!")
-	log.Printf("Target Repo: %s (branch: %s)", cfg.Git.Repo, cfg.Git.Branch)
-	log.Printf("Poll Interval: %v", cfg.Git.PollInterval)
-	log.Printf("Server Port: %d", cfg.Server.Port)
+	log.Printf("Starting AntCD... Polling %s every %v", cfg.Git.Repo, cfg.Git.PollInterval)
+
+	watcher := git.NewWatcher(cfg.Git.Repo, cfg.Git.Branch, cfg.Git.Token)
+
+	ticker := time.NewTicker(cfg.Git.PollInterval)
+	defer ticker.Stop()
+
+	// Initial check
+	checkRepo(watcher)
+
+	// Polling loop
+	for range ticker.C {
+		checkRepo(watcher)
+	}
+}
+
+func checkRepo(w *git.Watcher) {
+	changed, commit, err := w.CheckForUpdates()
+	if err != nil {
+		log.Printf("Error checking repo: %v", err)
+		return
+	}
+
+	if changed {
+		log.Printf("[SYNC NEEDED] New commit detected: %s", commit)
+	} else {
+		log.Printf("[UP TO DATE] Commit unchanged: %s", commit)
+	}
 }
