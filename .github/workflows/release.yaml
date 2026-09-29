@@ -16,10 +16,12 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v7
 
-      # Set short SHA output (e.g. abc1234)
-      - name: Set Git SHA
+      # Set short SHA and lowercase owner
+      - name: Set Environment Variables
         id: vars
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -35,8 +37,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/antcd:latest
-            ghcr.io/${{ github.repository_owner }}/antcd:${{ steps.vars.outputs.sha_short }}
+            ghcr.io/${{ steps.vars.outputs.owner }}/antcd:latest
+            ghcr.io/${{ steps.vars.outputs.owner }}/antcd:${{ steps.vars.outputs.sha_short }}
 
       # 2. Package and push Helm chart
       - name: Set up Helm
@@ -46,7 +48,7 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
           helm package chart
-          helm push antcd-*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+          helm push antcd-*.tgz oci://ghcr.io/${{ steps.vars.outputs.owner }}/charts
 
       # 3. Clean up older images (keep only the last 3 versions)
       - name: Prune Old Docker Images
