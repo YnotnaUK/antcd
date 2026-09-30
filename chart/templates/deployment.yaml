@@ -22,9 +22,14 @@ spec:
             - containerPort: {{ .Values.service.port }}
           {{- if .Values.git.token }}
           env:
-            - name: ANTCD_GIT_TOKEN
-              value: {{ .Values.git.token | quote }}
-          {{- end }}x
+            {{- if .Values.git.token }}
+              - name: ANTCD_GIT_TOKEN
+                value: {{ .Values.git.token | quote }}
+            {{- end }}
+            {{- if .Values.server.webhookSecret }}
+              - name: ANTCD_WEBHOOK_SECRET
+                value: {{ .Values.server.webhookSecret | quote }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

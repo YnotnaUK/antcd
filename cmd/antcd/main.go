@@ -34,7 +34,7 @@ func main() {
 	}
 
 	syncTrigger := make(chan struct{}, 1)
-	srv := server.NewServer(cfg.Server.Port, syncTrigger)
+	srv := server.NewServer(cfg.Server.Port, cfg.Server.WebhookSecret, syncTrigger)
 	go func() {
 		if err := srv.Start(); err != nil {
 			log.Fatalf("Server error: %v", err)

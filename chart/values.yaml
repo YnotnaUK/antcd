@@ -10,8 +10,9 @@ git:
   pollInterval: "30s"
   token: ""
 
-service:
+server:
   type: ClusterIP
   port: 8080
+  webhookSecret: ""
 
 targetNamespace: "default"

@@ -49,7 +49,8 @@ helm install antcd oci://ghcr.io/ynotnauk/charts/antcd
 Trigger an instant sync on push via HTTP:
 
 ```bash
-curl -X POST http://<antcd-service-ip>:8080/sync
+curl -X POST http://<antcd-service-ip>:8080/api/v1/sync \
+  -H "Authorization: Bearer <your-webhook-secret>"
 ```
 
 ## Local Development
