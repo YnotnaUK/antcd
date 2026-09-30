@@ -1,0 +1,21 @@
+# Local cluster state & credentials
+k3s-data/
+.kube/
+
+# Compiled binaries
+antcd
+*.exe
+*.test
+
+# Local configs with secrets
+config.local.yaml
+.env
+
+# Helm package artifacts
+*.tgz
+
+# OS & Editor files
+.DS_Store
+.zed/
+.idea/
+.vscode/

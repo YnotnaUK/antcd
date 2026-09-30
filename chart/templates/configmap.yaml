@@ -10,5 +10,5 @@ data:
       path: {{ .Values.git.path | quote }}
       pollInterval: {{ .Values.git.pollInterval | quote }}
     server:
-      port: {{ .Values.service.port }}
+      port: {{ .Values.server.port }}
     targetNamespace: {{ .Values.targetNamespace | quote }}
