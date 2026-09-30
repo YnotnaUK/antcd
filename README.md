@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/github/go-mod/go-version/ynotnauk/antcd)](https://golang.org)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
-[![Release Status](https://github.com/ynotnauk/antcd/actions/workflows/release.yml/badge.svg)](https://github.com/ynotnauk/antcd/actions)
+[![Release Status](https://img.shields.io/github/actions/workflow/status/ynotnauk/antcd/release.yml?branch=main)](https://github.com/ynotnauk/antcd/actions)
 [![Image Size](https://img.shields.io/badge/image_size-~14MB-blue)](https://ghcr.io/ynotnauk/antcd)
 
 AntCD is a lightweight, GitOps-driven Continuous Delivery (CD) operator for Kubernetes written in Go. 
