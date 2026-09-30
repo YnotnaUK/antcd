@@ -5,4 +5,5 @@ git:
   pollInterval: "10s"
 server:
   port: 8080
+  webhookSecret: "secret"
 targetNamespace: "default"

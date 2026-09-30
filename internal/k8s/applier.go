@@ -3,12 +3,14 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	"k8s.io/client-go/discovery"
 	memory "k8s.io/client-go/discovery/cached"
@@ -18,13 +20,21 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+const ManagedByLabel = "app.kubernetes.io/managed-by"
+const ManagedByValue = "antcd"
+
+type ResourceID struct {
+	GVR       schema.GroupVersionResource
+	Namespace string
+	Name      string
+}
+
 type Applier struct {
 	dynamicClient dynamic.Interface
 	mapper        meta.RESTMapper
 }
 
 func NewApplier() (*Applier, error) {
-	// Try in-cluster config first, fallback to ~/.kube/config for local dev
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
@@ -53,35 +63,45 @@ func NewApplier() (*Applier, error) {
 	}, nil
 }
 
-// ApplyManifest applies raw YAML content to the cluster using Server-Side Apply
-func (a *Applier) ApplyManifest(ctx context.Context, yamlData []byte, defaultNamespace string) error {
+// ApplyManifest injects the antcd label and applies using Server-Side Apply
+func (a *Applier) ApplyManifest(ctx context.Context, yamlData []byte, defaultNamespace string) (*ResourceID, error) {
 	dec := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
 	obj := &unstructured.Unstructured{}
 
 	_, gvk, err := dec.Decode(yamlData, nil, obj)
 	if err != nil {
-		return fmt.Errorf("decoding yaml: %w", err)
+		return nil, fmt.Errorf("decoding yaml: %w", err)
 	}
 
 	mapping, err := a.mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 	if err != nil {
-		return fmt.Errorf("mapping GVK to resource: %w", err)
+		return nil, fmt.Errorf("mapping GVK to resource: %w", err)
 	}
 
+	// Inject the managed-by label
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels[ManagedByLabel] = ManagedByValue
+	obj.SetLabels(labels)
+
 	var dr dynamic.ResourceInterface
+	ns := obj.GetNamespace()
 	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
-		ns := obj.GetNamespace()
 		if ns == "" {
 			ns = defaultNamespace
+			obj.SetNamespace(ns)
 		}
 		dr = a.dynamicClient.Resource(mapping.Resource).Namespace(ns)
 	} else {
 		dr = a.dynamicClient.Resource(mapping.Resource)
+		ns = ""
 	}
 
 	data, err := obj.MarshalJSON()
 	if err != nil {
-		return fmt.Errorf("marshaling json: %w", err)
+		return nil, fmt.Errorf("marshaling json: %w", err)
 	}
 
 	force := true
@@ -90,8 +110,52 @@ func (a *Applier) ApplyManifest(ctx context.Context, yamlData []byte, defaultNam
 		Force:        &force,
 	})
 	if err != nil {
-		return fmt.Errorf("applying resource %s/%s: %w", obj.GetKind(), obj.GetName(), err)
+		return nil, fmt.Errorf("applying %s/%s: %w", obj.GetKind(), obj.GetName(), err)
 	}
 
+	return &ResourceID{
+		GVR:       mapping.Resource,
+		Namespace: ns,
+		Name:      obj.GetName(),
+	}, nil
+}
+
+// Prune deletes resources in the cluster that have the antcd label but are no longer in Git
+func (a *Applier) Prune(ctx context.Context, applied []ResourceID) error {
+	appliedMap := make(map[string]bool)
+	uniqueGVRs := make(map[schema.GroupVersionResource]bool)
+
+	for _, res := range applied {
+		key := fmt.Sprintf("%s/%s/%s", res.GVR.String(), res.Namespace, res.Name)
+		appliedMap[key] = true
+		uniqueGVRs[res.GVR] = true
+	}
+
+	// Query each resource kind we manage
+	for gvr := range uniqueGVRs {
+		list, err := a.dynamicClient.Resource(gvr).List(ctx, metav1.ListOptions{
+			LabelSelector: fmt.Sprintf("%s=%s", ManagedByLabel, ManagedByValue),
+		})
+		if err != nil {
+			log.Printf("[WARN] Prune: Failed to list %s: %v", gvr.Resource, err)
+			continue
+		}
+
+		for _, item := range list.Items {
+			key := fmt.Sprintf("%s/%s/%s", gvr.String(), item.GetNamespace(), item.GetName())
+			if !appliedMap[key] {
+				log.Printf("[PRUNE] Resource no longer in Git: deleting %s/%s", gvr.Resource, item.GetName())
+				var dr dynamic.ResourceInterface
+				if item.GetNamespace() != "" {
+					dr = a.dynamicClient.Resource(gvr).Namespace(item.GetNamespace())
+				} else {
+					dr = a.dynamicClient.Resource(gvr)
+				}
+				if err := dr.Delete(ctx, item.GetName(), metav1.DeleteOptions{}); err != nil {
+					log.Printf("[ERROR] Pruning %s/%s failed: %v", gvr.Resource, item.GetName(), err)
+				}
+			}
+		}
+	}
 	return nil
 }

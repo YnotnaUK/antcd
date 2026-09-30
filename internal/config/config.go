@@ -17,7 +17,8 @@ type GitConfig struct {
 }
 
 type ServerConfig struct {
-	Port int `yaml:"port"`
+	Port          int    `yaml:"port"`
+	WebhookSecret string `yaml:"webhookSecret"` // Secret required to trigger /api/v1/sync
 }
 
 type Config struct {
@@ -49,9 +50,14 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config yaml: %w", err)
 	}
 
-	// Read token from environment variable if present
+	// Read git token from environment variable if present
 	if envToken := os.Getenv("ANTCD_GIT_TOKEN"); envToken != "" {
 		cfg.Git.Token = envToken
+	}
+
+	// Read webhook secret from environment variable if present
+	if envSecret := os.Getenv("ANTCD_WEBHOOK_SECRET"); envSecret != "" {
+		cfg.Server.WebhookSecret = envSecret
 	}
 
 	return cfg, nil

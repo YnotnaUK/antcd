@@ -16,6 +16,8 @@ import (
 	"github.com/ynotnauk/antcd/internal/git"
 	"github.com/ynotnauk/antcd/internal/k8s"
 	"github.com/ynotnauk/antcd/internal/server"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	serializerYaml "k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 )
 
@@ -34,7 +36,7 @@ func main() {
 	}
 
 	syncTrigger := make(chan struct{}, 1)
-	srv := server.NewServer(cfg.Server.Port, syncTrigger)
+	srv := server.NewServer(cfg.Server.Port, cfg.Server.WebhookSecret, syncTrigger)
 	go func() {
 		if err := srv.Start(); err != nil {
 			log.Fatalf("Server error: %v", err)
@@ -80,7 +82,6 @@ func reconcile(w *git.Watcher, applier *k8s.Applier, cfg *config.Config) {
 		return
 	}
 
-	// Create temp directory for cloning
 	tempDir, err := os.MkdirTemp("", "antcd-*")
 	if err != nil {
 		log.Printf("[ERROR] Creating temp dir: %v", err)
@@ -94,18 +95,21 @@ func reconcile(w *git.Watcher, applier *k8s.Applier, cfg *config.Config) {
 	}
 
 	manifestDir := filepath.Join(tempDir, cfg.Git.Path)
-	if err := applyDirectory(manifestDir, applier, cfg.TargetNamespace); err != nil {
-		log.Printf("[ERROR] Failed applying manifests: %v. Will retry.", err)
+	if err := reconcileDirectory(manifestDir, applier, cfg.TargetNamespace); err != nil {
+		log.Printf("[ERROR] Reconciliation failed: %v. Will retry.", err)
 		return
 	}
 
-	// Only mark success if all steps passed!
 	w.RecordSuccess(commit)
-	log.Printf("[SUCCESS] Successfully applied commit %s", commit)
+	log.Printf("[SUCCESS] Successfully reconciled commit %s", commit)
 }
 
-func applyDirectory(dir string, applier *k8s.Applier, defaultNamespace string) error {
-	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+func reconcileDirectory(dir string, applier *k8s.Applier, defaultNamespace string) error {
+	var items []k8s.ManifestItem
+	dec := serializerYaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
+
+	// 1. Collect all manifests
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return err
 		}
@@ -120,9 +124,9 @@ func applyDirectory(dir string, applier *k8s.Applier, defaultNamespace string) e
 			return fmt.Errorf("reading %s: %w", path, err)
 		}
 
-		decoder := utilyaml.NewYAMLReader(bufio.NewReader(bytes.NewReader(data)))
+		reader := utilyaml.NewYAMLReader(bufio.NewReader(bytes.NewReader(data)))
 		for {
-			doc, err := decoder.Read()
+			doc, err := reader.Read()
 			if err == io.EOF {
 				break
 			}
@@ -130,11 +134,45 @@ func applyDirectory(dir string, applier *k8s.Applier, defaultNamespace string) e
 				continue
 			}
 
-			if err := applier.ApplyManifest(context.Background(), doc, defaultNamespace); err != nil {
-				return fmt.Errorf("applying %s: %w", filepath.Base(path), err)
+			obj := &unstructured.Unstructured{}
+			_, gvk, err := dec.Decode(doc, nil, obj)
+			if err != nil {
+				return fmt.Errorf("decoding kind from %s: %w", filepath.Base(path), err)
 			}
-			log.Printf("[APPLIED] Successfully applied manifest from %s", filepath.Base(path))
+
+			items = append(items, k8s.ManifestItem{
+				Kind:     gvk.Kind,
+				Data:     doc,
+				FileName: filepath.Base(path),
+			})
 		}
 		return nil
 	})
+
+	if err != nil {
+		return fmt.Errorf("reading manifests: %w", err)
+	}
+
+	// 2. Sort manifests by dependency order
+	k8s.SortManifests(items)
+
+	// 3. Apply manifests in sorted order
+	var applied []k8s.ResourceID
+	ctx := context.Background()
+
+	for _, item := range items {
+		resID, err := applier.ApplyManifest(ctx, item.Data, defaultNamespace)
+		if err != nil {
+			return fmt.Errorf("applying %s (%s): %w", item.FileName, item.Kind, err)
+		}
+		applied = append(applied, *resID)
+		log.Printf("[APPLIED] %s (%s)", item.FileName, item.Kind)
+	}
+
+	// 4. Prune resources deleted from Git
+	if err := applier.Prune(ctx, applied); err != nil {
+		log.Printf("[WARN] Pruning completed with warnings: %v", err)
+	}
+
+	return nil
 }

@@ -1,0 +1,12 @@
+services:
+  k3s:
+    image: rancher/k3s:v1.37.1-rc2-k3s1
+    privileged: true
+    command: server --disable traefik --disable local-storage
+    environment:
+      - K3S_KUBECONFIG_OUTPUT=/output/kubeconfig.yaml
+      - K3S_KUBECONFIG_MODE=666
+    ports:
+      - "6443:6443"
+    volumes:
+      - ./k3s-data:/output

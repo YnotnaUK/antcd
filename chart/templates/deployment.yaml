@@ -19,16 +19,22 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["--config", "/etc/antcd/config.yaml"]
           ports:
-            - containerPort: {{ .Values.service.port }}
-          {{- if .Values.git.token }}
+            - containerPort: {{ .Values.server.port }}
+          {{- if or .Values.git.token .Values.server.webhookSecret }}
           env:
+            {{- if .Values.git.token }}
             - name: ANTCD_GIT_TOKEN
               value: {{ .Values.git.token | quote }}
-          {{- end }}x
+            {{- end }}
+            {{- if .Values.server.webhookSecret }}
+            - name: ANTCD_WEBHOOK_SECRET
+              value: {{ .Values.server.webhookSecret | quote }}
+            {{- end }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
-              port: {{ .Values.service.port }}
+              port: {{ .Values.server.port }}
           volumeMounts:
             - name: config-volume
               mountPath: /etc/antcd

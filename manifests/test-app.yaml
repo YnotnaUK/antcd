@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: antcd-hello-world
+spec:
+  containers:
+    - name: hello
+      image: busybox
+      command: ["sh", "-c", "echo 'Deployed by AntCD' && sleep 3600"]

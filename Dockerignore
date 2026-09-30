@@ -1,0 +1,7 @@
+.git
+.github
+k3s-data
+chart
+*.md
+docker-compose.yaml
+.gitignore
