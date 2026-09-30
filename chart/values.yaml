@@ -1,6 +1,6 @@
 image:
   repository: ghcr.io/ynotnauk/antcd
-  tag: latest
+  tag: 0.1.1
   pullPolicy: IfNotPresent
 
 git:
