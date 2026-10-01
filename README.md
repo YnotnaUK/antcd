@@ -230,7 +230,7 @@ curl -i -X POST http://<antcd-host>:8080/api/v1/sync \
 
 ## Releasing
 
-- Pull requests and non-`main` pushes run CI: lint, tests, build, chart lint and an image build.
+- Pull requests run CI: lint, tests, build, chart lint and an image build.
 - Every push to `main` re-runs CI. If it passes, the image (tagged with the version, `latest` and the short SHA, with provenance and SBOM) and the Helm chart are published, and a `v<version>` GitHub Release is created with the chart attached.
 - Before merging, set the same version in `chart/Chart.yaml` (`version` and `appVersion`) and `chart/values.yaml` (`image.tag`). The release fails if they disagree or the version is already published. Released versions are never deleted.
 
