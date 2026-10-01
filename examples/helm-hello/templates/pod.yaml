@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .Release.Name }}-hello
+spec:
+  containers:
+    - name: hello
+      image: busybox
+      env:
+        - name: MESSAGE
+          value: {{ .Values.message | quote }}
+      command: ["sh", "-c", "echo \"$MESSAGE\" && sleep 3600"]

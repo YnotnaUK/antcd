@@ -1,14 +1,18 @@
+{{- if not .Values.repos }}
+{{- fail "at least one entry in repos is required" }}
+{{- end }}
+{{- $repos := list }}
+{{- range $i, $repo := .Values.repos }}
+{{- $entry := omit $repo "token" "tokenSecret" }}
+{{- if or $repo.token $repo.tokenSecret }}
+{{- $entry = set $entry "tokenEnv" (printf "ANTCD_GIT_TOKEN_%d" $i) }}
+{{- end }}
+{{- $repos = append $repos $entry }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-config
 data:
   config.yaml: |
-    git:
-      repo: {{ .Values.git.repo | quote }}
-      branch: {{ .Values.git.branch | quote }}
-      path: {{ .Values.git.path | quote }}
-      pollInterval: {{ .Values.git.pollInterval | quote }}
-    server:
-      port: {{ .Values.server.port }}
-    targetNamespace: {{ .Values.targetNamespace | quote }}
+    {{- dict "server" (dict "port" .Values.server.port) "repos" $repos | toYaml | nindent 4 }}
