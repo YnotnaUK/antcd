@@ -91,6 +91,8 @@ repos:
         path: .
 ```
 
+The bundled `config.yaml` and `manifests/` are for local development only. Always set your own `webhookSecret` outside local use.
+
 Repos are polled independently, so a slow or failing repo never blocks the others. Names must be valid Kubernetes label values, and paths must be relative and stay inside the repository.
 
 #### Targets
