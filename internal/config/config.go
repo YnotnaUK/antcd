@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -137,6 +138,8 @@ func (c *Config) validate() error {
 
 			if t.Path == "" {
 				errs = append(errs, fmt.Errorf("repo %q target %q: path is required", r.Name, t.Name))
+			} else if !filepath.IsLocal(t.Path) {
+				errs = append(errs, fmt.Errorf("repo %q target %q: path %q must be relative and stay within the repository", r.Name, t.Name, t.Path))
 			}
 			switch t.Type {
 			case TargetTypeManifests:

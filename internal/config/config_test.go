@@ -64,6 +64,8 @@ func TestParseErrors(t *testing.T) {
 		{"dup repo", "repos: [{name: r, url: u, targets: [{name: a, path: .}]}, {name: r, url: u, targets: [{name: a, path: .}]}]", "duplicate name"},
 		{"dup target", "repos: [{name: r, url: u, targets: [{name: a, path: .}, {name: a, path: .}]}]", "duplicate name"},
 		{"missing path", "repos: [{name: r, url: u, targets: [{name: a}]}]", "path is required"},
+		{"absolute path", "repos: [{name: r, url: u, targets: [{name: a, path: /etc}]}]", "stay within"},
+		{"escaping path", "repos: [{name: r, url: u, targets: [{name: a, path: ../x}]}]", "stay within"},
 		{"bad type", "repos: [{name: r, url: u, targets: [{name: a, type: kustomize, path: .}]}]", "unknown type"},
 		{"helm field on manifests", "repos: [{name: r, url: u, targets: [{name: a, path: ., valuesFiles: [v.yaml]}]}]", "only valid for type"},
 		{"bad repo label", "repos: [{name: 'my repo', url: u, targets: [{name: a, path: .}]}]", "valid label value"},
