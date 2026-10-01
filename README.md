@@ -196,7 +196,7 @@ curl -i -X POST http://<antcd-host>:8080/api/v1/sync \
 
 ## Releasing
 
-Every push to `main` publishes the image (tagged with the version, `latest` and the short SHA) and the Helm chart. Before merging, bump the version in `chart/Chart.yaml` (`version` and `appVersion`) and `chart/values.yaml` (`image.tag`) to the same value. The release workflow fails if these disagree or if that version has already been published.
+Every push to `main` publishes the image (tagged with the version, `latest` and the short SHA) and the Helm chart. Before merging, bump the version in `chart/Chart.yaml` (`version` and `appVersion`) and `chart/values.yaml` (`image.tag`) to the same value. The release workflow fails if these disagree or if that version has already been published. Released versions are never deleted.
 
 ## License
 

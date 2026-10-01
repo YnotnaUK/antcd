@@ -79,11 +79,3 @@ jobs:
         run: |
           helm package chart
           helm push antcd-*.tgz oci://ghcr.io/${{ steps.vars.outputs.owner }}/charts
-
-      # 3. Clean up older images (keep only the last 3 versions)
-      - name: Prune Old Docker Images
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: 'antcd'
-          package-type: 'container'
-          min-versions-to-keep: 3
