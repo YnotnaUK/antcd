@@ -5,11 +5,24 @@ on:
     branches:
       - main
 
+# Never run two releases at once, and never cancel one part-way through.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yaml
     permissions:
       contents: read
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
       packages: write
 
     steps:
@@ -20,8 +33,8 @@ jobs:
       - name: Set Environment Variables
         id: vars
         run: |
-          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+          echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -30,30 +43,75 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 1. Build and push Docker image with both latest and SHA tags
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # The chart version, appVersion and default image tag must agree, and a
+      # version can only be released once. Bump chart/Chart.yaml and chart/values.yaml
+      # for every change merged to main.
+      - name: Resolve and Validate Version
+        id: version
+        env:
+          OWNER: ${{ steps.vars.outputs.owner }}
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(awk '/^version:/{gsub(/"/,"",$2); print $2}' chart/Chart.yaml)
+          app_version=$(awk '/^appVersion:/{gsub(/"/,"",$2); print $2}' chart/Chart.yaml)
+          image_tag=$(awk '/^  tag:/{gsub(/"/,"",$2); print $2}' chart/values.yaml)
+
+          if [ -z "$version" ] || [ "$version" != "$app_version" ] || [ "$version" != "$image_tag" ]; then
+            echo "::error::Version mismatch: Chart version='$version', appVersion='$app_version', values image.tag='$image_tag'"
+            exit 1
+          fi
+
+          if docker manifest inspect "ghcr.io/${OWNER}/antcd:${version}" > /dev/null 2>&1; then
+            echo "::error::Image ghcr.io/${OWNER}/antcd:${version} already exists. Bump the version in chart/Chart.yaml and chart/values.yaml."
+            exit 1
+          fi
+
+          echo "$TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
+          if helm show chart "oci://ghcr.io/${OWNER}/charts/antcd" --version "$version" > /dev/null 2>&1; then
+            echo "::error::Chart antcd:${version} already exists. Bump the version in chart/Chart.yaml and chart/values.yaml."
+            exit 1
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      # Package before publishing anything so a bad chart can't leave a half-released version
+      - name: Lint and Package Helm Chart
+        run: |
+          helm lint chart
+          helm package chart
+
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v7
         with:
           context: .
           push: true
+          provenance: true
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
+            ghcr.io/${{ steps.vars.outputs.owner }}/antcd:${{ steps.version.outputs.version }}
             ghcr.io/${{ steps.vars.outputs.owner }}/antcd:latest
             ghcr.io/${{ steps.vars.outputs.owner }}/antcd:${{ steps.vars.outputs.sha_short }}
 
-      # 2. Package and push Helm chart
-      - name: Set up Helm
-        uses: azure/setup-helm@v5
+      - name: Push Helm Chart
+        env:
+          OWNER: ${{ steps.vars.outputs.owner }}
+        run: helm push antcd-*.tgz "oci://ghcr.io/${OWNER}/charts"
 
-      - name: Package and Push Helm Chart
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-          helm package chart
-          helm push antcd-*.tgz oci://ghcr.io/${{ steps.vars.outputs.owner }}/charts
-
-      # 3. Clean up older images (keep only the last 3 versions)
-      - name: Prune Old Docker Images
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: 'antcd'
-          package-type: 'container'
-          min-versions-to-keep: 3
+          gh release create "v${VERSION}" antcd-*.tgz \
+            --target "$GITHUB_SHA" \
+            --title "v${VERSION}" \
+            --generate-notes

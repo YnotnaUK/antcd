@@ -1,18 +1,55 @@
 image:
   repository: ghcr.io/ynotnauk/antcd
-  tag: 0.1.1
+  tag: 0.2.0
   pullPolicy: IfNotPresent
-
-git:
-  repo: "https://github.com/ynotnauk/antcd.git"
-  branch: "main"
-  path: "./manifests"
-  pollInterval: "30s"
-  token: ""
 
 server:
   type: ClusterIP
   port: 8080
+  # Inline secret for /api/v1/sync; stored in a chart-managed Secret. Empty disables the webhook.
   webhookSecret: ""
 
-targetNamespace: "default"
+# Git repositories to watch. Each repo is polled independently and has one or more targets.
+# At least one repo is required, for example:
+#
+# repos:
+#   - name: platform
+#     url: https://github.com/your-org/platform.git
+#     branch: main
+#     pollInterval: 30s
+#     # Private repos: set either an inline token (stored in a chart-managed Secret)
+#     # or reference a key in an existing Secret.
+#     token: ""
+#     tokenSecret:
+#       name: platform-git-token
+#       key: token
+#     targets:
+#       - name: infra
+#         type: manifests
+#         path: ./manifests
+#       - name: myapp
+#         type: helm
+#         path: ./charts/myapp
+#         releaseName: myapp
+#         valuesFiles: [values-prod.yaml]
+#         values:
+#           replicas: 3
+repos: []
+
+# AntCD applies arbitrary resource kinds and prunes by listing and deleting them, so the
+# default is cluster-wide admin. Narrow rbac.rules if your targets only use known kinds,
+# keeping in mind AntCD also needs list and delete on those kinds for pruning.
+# Set create to false to bind the ServiceAccount (<release>-sa) to your own role.
+rbac:
+  create: true
+  rules:
+    - apiGroups: ["*"]
+      resources: ["*"]
+      verbs: ["*"]
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi

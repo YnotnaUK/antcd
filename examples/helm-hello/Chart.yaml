@@ -1,0 +1,5 @@
+apiVersion: v2
+name: helm-hello
+description: Minimal example chart deployed by AntCD
+type: application
+version: 0.1.0

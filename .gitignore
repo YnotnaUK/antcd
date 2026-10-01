@@ -19,3 +19,7 @@ config.local.yaml
 .zed/
 .idea/
 .vscode/
+
+# Test and coverage output
+coverage.out
+*.out

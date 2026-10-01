@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-hello
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-hello
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-hello
+    spec:
+      containers:
+        - name: hello
+          image: busybox
+          env:
+            - name: MESSAGE
+              value: {{ .Values.message | quote }}
+          command: ["sh", "-c", "echo \"$MESSAGE\" && sleep 3600"]
