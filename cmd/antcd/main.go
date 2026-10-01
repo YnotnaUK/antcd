@@ -1,12 +1,9 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,10 +12,8 @@ import (
 	"github.com/ynotnauk/antcd/internal/config"
 	"github.com/ynotnauk/antcd/internal/git"
 	"github.com/ynotnauk/antcd/internal/k8s"
+	"github.com/ynotnauk/antcd/internal/manifests"
 	"github.com/ynotnauk/antcd/internal/server"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	serializerYaml "k8s.io/apimachinery/pkg/runtime/serializer/yaml"
-	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 )
 
 func main() {
@@ -107,52 +102,10 @@ func reconcile(w *git.Watcher, applier *k8s.Applier, repo *config.Repo) {
 }
 
 func reconcileDirectory(dir string, applier *k8s.Applier, defaultNamespace string) error {
-	var items []k8s.ManifestItem
-	dec := serializerYaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
-
 	// 1. Collect all manifests
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return err
-		}
-
-		ext := filepath.Ext(path)
-		if ext != ".yaml" && ext != ".yml" {
-			return nil
-		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("reading %s: %w", path, err)
-		}
-
-		reader := utilyaml.NewYAMLReader(bufio.NewReader(bytes.NewReader(data)))
-		for {
-			doc, err := reader.Read()
-			if err == io.EOF {
-				break
-			}
-			if err != nil || len(bytes.TrimSpace(doc)) == 0 {
-				continue
-			}
-
-			obj := &unstructured.Unstructured{}
-			_, gvk, err := dec.Decode(doc, nil, obj)
-			if err != nil {
-				return fmt.Errorf("decoding kind from %s: %w", filepath.Base(path), err)
-			}
-
-			items = append(items, k8s.ManifestItem{
-				Kind:     gvk.Kind,
-				Data:     doc,
-				FileName: filepath.Base(path),
-			})
-		}
-		return nil
-	})
-
+	items, err := manifests.Collect(dir)
 	if err != nil {
-		return fmt.Errorf("reading manifests: %w", err)
+		return err
 	}
 
 	// 2. Sort manifests by dependency order
