@@ -125,6 +125,22 @@ go run ./cmd/antcd/main.go --config config.yaml
 
 ---
 
+## Make Targets
+
+Common tasks are wrapped in a [Makefile](Makefile). Run `make help` to list them.
+
+| Target | Description |
+|---|---|
+| `make build` | Build a static `antcd` binary |
+| `make run` | Run AntCD (override with `CONFIG=other.yaml`) |
+| `make test` | Run unit tests |
+| `make lint` | Check `gofmt` and run `go vet` |
+| `make fmt` / `make tidy` | Format code / tidy `go.mod` |
+| `make docker` | Build the image (override with `IMAGE=` and `VERSION=`) |
+| `make lint-chart` | Lint the Helm chart |
+| `make cluster-up` / `make cluster-down` | Start / stop the local K3s cluster |
+| `make kubeconfig` | Install the local K3s kubeconfig to `~/.kube/config` |
+
 ## Production Installation (via Helm)
 
 Deploy AntCD into any Kubernetes cluster directly from the GitHub Container Registry. Repos and targets are set in a values file:
