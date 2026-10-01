@@ -1,1 +1,2 @@
 message: "Deployed by AntCD via Helm"
+replicas: 1
