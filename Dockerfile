@@ -14,6 +14,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /antcd ./cmd/antcd
 # Final Stage
 FROM gcr.io/distroless/static-debian13:nonroot
 
+LABEL org.opencontainers.image.source="https://github.com/YnotnaUK/antcd" \
+      org.opencontainers.image.licenses="MPL-2.0"
+
 WORKDIR /
 COPY --from=builder /antcd /antcd
 

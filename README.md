@@ -2,24 +2,26 @@
 
 [![Go Version](https://img.shields.io/github/go-mod/go-version/ynotnauk/antcd)](https://golang.org)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
-[![Release Status](https://img.shields.io/github/actions/workflow/status/ynotnauk/antcd/release.yml?branch=main)](https://github.com/ynotnauk/antcd/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/ynotnauk/antcd/ci.yaml?branch=main&label=CI)](https://github.com/ynotnauk/antcd/actions/workflows/ci.yaml)
+[![Release Status](https://img.shields.io/github/actions/workflow/status/ynotnauk/antcd/release.yaml?branch=main)](https://github.com/ynotnauk/antcd/actions)
+[![Latest Release](https://img.shields.io/github/v/release/ynotnauk/antcd)](https://github.com/ynotnauk/antcd/releases)
 
-AntCD is a lightweight, GitOps-driven Continuous Delivery (CD) operator for Kubernetes written in Go. 
+AntCD is a lightweight GitOps continuous delivery operator for Kubernetes, written in Go.
 
-It periodically polls one or more Git repositories for commit changes, pulls plain Kubernetes manifests or renders Helm charts, sorts the result by dependency order, and applies it directly to your cluster using Kubernetes Server-Side Apply. Resources removed from Git are automatically pruned.
+It polls Git repositories, reads plain manifests or renders Helm charts, sorts the result by dependency order and applies it with Server-Side Apply. Resources removed from Git are pruned.
 
-It is deliberately small: a single static binary and a single Deployment, with no CRDs and no extra controllers to install.
+It is deliberately small: one static binary, one Deployment, no CRDs and no extra controllers.
 
 ## Features
 
-- **Lightweight:** Single static Go binary on a distroless base image (see [Size](#size)).
-- **Multiple Repositories:** Each repo has its own poll interval and one or more targets.
-- **Plain Manifests and Helm:** Targets are either a directory of manifests or a Helm chart, rendered in-process (no `helm` binary needed).
-- **Fast Git Polling:** Checks remote branch hashes without full clones.
-- **Dependency Sorting:** Automatically applies Namespaces, CRDs, and Configs before workloads.
-- **Automated Pruning:** Safely deletes Kubernetes resources removed from the Git repository, scoped per repo and target.
+- **Lightweight:** Single static binary on a distroless image (see [Size](#size)).
+- **Multiple Repositories:** Each repo has its own poll interval and targets.
+- **Plain Manifests and Helm:** Targets are either a directory of manifests or a Helm chart, rendered in-process (no `helm` binary required).
+- **Fast Git Polling:** Checks remote branch hashes without cloning.
+- **Dependency Sorting:** Applies Namespaces, CRDs and configs before workloads.
+- **Pruning:** Deletes resources removed from Git, scoped per repo and target.
 - **Secure Webhook:** Instant sync via `/api/v1/sync` secured with Bearer token authentication.
-- **Health Probes:** Unauthenticated `/healthz` endpoint for Kubernetes liveness/readiness checks.
+- **Health Probes:** Unauthenticated `/healthz` endpoint for liveness and readiness checks.
 
 ---
 
@@ -34,7 +36,7 @@ It is deliberately small: a single static binary and a single Deployment, with n
 
 ## Local Development & Testing
 
-AntCD includes a lightweight **K3s** cluster via Docker Compose so you can develop and test locally without an external cluster.
+A K3s cluster is provided via Docker Compose, so no external cluster is needed.
 
 ### 1. Start the Local Kubernetes Cluster
 
@@ -42,7 +44,7 @@ AntCD includes a lightweight **K3s** cluster via Docker Compose so you can devel
 docker compose up -d
 ```
 
-Wait a few seconds for the cluster to generate the credentials, then configure ```kubectl```:
+Wait a few seconds for the credentials to be generated, then configure `kubectl` (or run `make kubeconfig`):
 
 ```bash
 mkdir -p ~/.kube
@@ -50,7 +52,7 @@ cp ./k3s-data/kubeconfig.yaml ~/.kube/config
 sed -i 's/127.0.0.1/localhost/g' ~/.kube/config
 ```
 
-Verify the node is ready
+Check the node is ready:
 
 ```bash
 kubectl get nodes
@@ -58,7 +60,7 @@ kubectl get nodes
 
 ### 2. Configure AntCD
 
-Edit ```config.yaml``` with your repositories and targets. The config is required; there are no defaults for `repos`.
+Edit `config.yaml` with your repositories and targets. `repos` has no default and is required.
 
 ```yaml
 server:
@@ -89,7 +91,7 @@ repos:
         path: .
 ```
 
-Each repo is polled independently, so a slow or failing repo never blocks the others. Names must be valid Kubernetes label values, and paths must be relative and stay inside the repository.
+Repos are polled independently, so a slow or failing repo never blocks the others. Names must be valid Kubernetes label values, and paths must be relative and stay inside the repository.
 
 #### Targets
 
@@ -108,26 +110,26 @@ Each repo is polled independently, so a slow or failing repo never blocks the ot
 
 #### Helm support
 
-Charts are rendered client-side and applied as plain manifests; AntCD never creates Helm release objects, so `helm list` won't show them. Limitations:
+Charts are rendered client-side and applied as plain manifests. No Helm release objects are created, so `helm list` shows nothing. Limitations:
 
 - Hooks (`helm.sh/hook`) are skipped with a warning.
 - `lookup` and cluster-dependent `.Capabilities` are not supported.
 - Chart dependencies must be vendored into `charts/` and committed (`helm dependency build`).
-- Charts in the Git repository only; remote chart repositories and OCI charts are not supported.
+- Charts must be in the Git repository; remote and OCI charts are not supported.
 
 See [examples/helm-hello](examples/helm-hello) for a minimal chart.
 
 ### 3. Run AntCD
 
 ```bash
-go run ./cmd/antcd/main.go --config config.yaml
+go run ./cmd/antcd --config config.yaml
 ```
 
 ---
 
 ## Make Targets
 
-Common tasks are wrapped in a [Makefile](Makefile). Run `make help` to list them.
+Run `make help` to list all targets.
 
 | Target | Description |
 |---|---|
@@ -143,7 +145,7 @@ Common tasks are wrapped in a [Makefile](Makefile). Run `make help` to list them
 
 ## Production Installation (via Helm)
 
-Deploy AntCD into any Kubernetes cluster directly from the GitHub Container Registry. Repos and targets are set in a values file:
+Install from the GitHub Container Registry, setting repos and targets in a values file:
 
 ```yaml
 # antcd-values.yaml
@@ -173,7 +175,7 @@ The install fails if `repos` is empty.
 
 ### Private Git Repositories
 
-Give a repo a token inline (stored in a chart-managed Secret) or reference a key in an existing Secret:
+Set a token inline (stored in a chart-managed Secret) or reference an existing Secret:
 
 ```yaml
 repos:
@@ -188,7 +190,21 @@ repos:
         path: .
 ```
 
-Prefer `tokenSecret` so the token isn't kept in your values file. When running the binary directly, use `tokenEnv` in the config instead.
+Prefer `tokenSecret` to keep the token out of your values file. When running the binary directly, use `tokenEnv`.
+
+### RBAC
+
+By default the chart binds a ClusterRole with `*` on all resources and verbs to the ServiceAccount (`<release>-sa`), as AntCD can apply any kind and must list and delete them to prune. To narrow it, override `rbac.rules`:
+
+```yaml
+rbac:
+  rules:
+    - apiGroups: ["", "apps"]
+      resources: ["namespaces", "configmaps", "services", "deployments"]
+      verbs: ["get", "list", "create", "update", "patch", "delete"]
+```
+
+Set `rbac.create: false` to bind the ServiceAccount yourself. AntCD also needs `get` and `list` on API discovery, which authenticated users have by default.
 
 ## Size
 
@@ -199,25 +215,11 @@ Measured on linux/amd64 with `CGO_ENABLED=0 go build -ldflags="-w -s"`:
 | `antcd` binary | ~42 MB |
 | Container image (uncompressed, distroless base) | ~65 MB |
 
-Most of the binary is the Kubernetes and Helm client libraries. These figures will change between releases.
-
-### RBAC
-
-By default the chart creates a ClusterRole with `*` on all resources and verbs bound to AntCD's ServiceAccount (`<release>-sa`), because AntCD can apply any kind and must list and delete them to prune. To narrow it, override `rbac.rules`, for example:
-
-```yaml
-rbac:
-  rules:
-    - apiGroups: ["", "apps"]
-      resources: ["namespaces", "configmaps", "services", "deployments"]
-      verbs: ["get", "list", "create", "update", "patch", "delete"]
-```
-
-Set `rbac.create: false` to skip the ClusterRole and ClusterRoleBinding and bind the ServiceAccount yourself. AntCD also needs `get` and `list` on API discovery, which every authenticated user has by default.
+Most of the binary is the Kubernetes and Helm client libraries. Figures vary between releases.
 
 ## Triggering Syncs via Webhook
 
-Trigger an immediate sync without waiting for the polling timer:
+Trigger an immediate sync:
 
 ```bash
 curl -i -X POST http://<antcd-host>:8080/api/v1/sync \
@@ -226,8 +228,14 @@ curl -i -X POST http://<antcd-host>:8080/api/v1/sync \
 
 ## Releasing
 
-Every push to `main` publishes the image (tagged with the version, `latest` and the short SHA) and the Helm chart. Before merging, bump the version in `chart/Chart.yaml` (`version` and `appVersion`) and `chart/values.yaml` (`image.tag`) to the same value. The release workflow fails if these disagree or if that version has already been published. Released versions are never deleted.
+- Pull requests and non-`main` pushes run CI: lint, tests, build, chart lint and an image build.
+- Every push to `main` re-runs CI. If it passes, the image (tagged with the version, `latest` and the short SHA, with provenance and SBOM) and the Helm chart are published, and a `v<version>` GitHub Release is created with the chart attached.
+- Before merging, set the same version in `chart/Chart.yaml` (`version` and `appVersion`) and `chart/values.yaml` (`image.tag`). The release fails if they disagree or the version is already published. Released versions are never deleted.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-This project is licensed under the [Mozilla Public License 2.0](https://ghcr.io/ynotnauk/antcd).
+This project is licensed under the [Mozilla Public License 2.0](LICENSE).
