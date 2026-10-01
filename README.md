@@ -185,6 +185,20 @@ Measured on linux/amd64 with `CGO_ENABLED=0 go build -ldflags="-w -s"`:
 
 Most of the binary is the Kubernetes and Helm client libraries. These figures will change between releases.
 
+### RBAC
+
+By default the chart creates a ClusterRole with `*` on all resources and verbs bound to AntCD's ServiceAccount (`<release>-sa`), because AntCD can apply any kind and must list and delete them to prune. To narrow it, override `rbac.rules`, for example:
+
+```yaml
+rbac:
+  rules:
+    - apiGroups: ["", "apps"]
+      resources: ["namespaces", "configmaps", "services", "deployments"]
+      verbs: ["get", "list", "create", "update", "patch", "delete"]
+```
+
+Set `rbac.create: false` to skip the ClusterRole and ClusterRoleBinding and bind the ServiceAccount yourself. AntCD also needs `get` and `list` on API discovery, which every authenticated user has by default.
+
 ## Triggering Syncs via Webhook
 
 Trigger an immediate sync without waiting for the polling timer:
