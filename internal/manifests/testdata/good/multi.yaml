@@ -4,6 +4,8 @@ metadata:
   name: demo
 ---
 ---
+# Source: comment-only document
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:

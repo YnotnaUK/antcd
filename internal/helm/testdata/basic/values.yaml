@@ -1,0 +1,6 @@
+replicas: 1
+image:
+  repository: nginx
+  tag: "1.25"
+labels:
+  tier: web

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/ynotnauk/antcd/internal/k8s"
+	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	serializerYaml "k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
@@ -48,7 +49,7 @@ func Collect(dir string) ([]k8s.ManifestItem, error) {
 }
 
 // ParseDocuments splits a multi-document YAML stream into manifest items.
-// Empty documents are skipped; source is recorded as the item's FileName.
+// Empty and comment-only documents are skipped; source is recorded as the item's FileName.
 func ParseDocuments(data []byte, source string) ([]k8s.ManifestItem, error) {
 	var items []k8s.ManifestItem
 	dec := serializerYaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
@@ -59,7 +60,7 @@ func ParseDocuments(data []byte, source string) ([]k8s.ManifestItem, error) {
 		if err == io.EOF {
 			break
 		}
-		if err != nil || len(bytes.TrimSpace(doc)) == 0 {
+		if err != nil || isEmpty(doc) {
 			continue
 		}
 
@@ -76,4 +77,13 @@ func ParseDocuments(data []byte, source string) ([]k8s.ManifestItem, error) {
 		})
 	}
 	return items, nil
+}
+
+// isEmpty reports whether doc is blank or contains only comments.
+func isEmpty(doc []byte) bool {
+	if len(bytes.TrimSpace(doc)) == 0 {
+		return true
+	}
+	var v any
+	return yaml.Unmarshal(doc, &v) == nil && v == nil
 }

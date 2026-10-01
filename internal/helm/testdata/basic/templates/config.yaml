@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "basic.name" . }}-config
+data:
+  tier: {{ .Values.labels.tier | quote }}
+---
+# an empty document follows
+---
