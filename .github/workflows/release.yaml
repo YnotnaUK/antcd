@@ -30,23 +30,53 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 1. Build and push Docker image with both latest and SHA tags
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+
+      # The chart version, appVersion and default image tag must agree, and a
+      # version can only be released once. Bump chart/Chart.yaml and chart/values.yaml
+      # for every change merged to main.
+      - name: Resolve and Validate Version
+        id: version
+        env:
+          OWNER: ${{ steps.vars.outputs.owner }}
+        run: |
+          version=$(awk '/^version:/{gsub(/"/,"",$2); print $2}' chart/Chart.yaml)
+          app_version=$(awk '/^appVersion:/{gsub(/"/,"",$2); print $2}' chart/Chart.yaml)
+          image_tag=$(awk '/^  tag:/{gsub(/"/,"",$2); print $2}' chart/values.yaml)
+
+          if [ -z "$version" ] || [ "$version" != "$app_version" ] || [ "$version" != "$image_tag" ]; then
+            echo "::error::Version mismatch: Chart version='$version', appVersion='$app_version', values image.tag='$image_tag'"
+            exit 1
+          fi
+
+          if docker manifest inspect "ghcr.io/${OWNER}/antcd:${version}" > /dev/null 2>&1; then
+            echo "::error::Image ghcr.io/${OWNER}/antcd:${version} already exists. Bump the version in chart/Chart.yaml and chart/values.yaml."
+            exit 1
+          fi
+
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          if helm show chart "oci://ghcr.io/${OWNER}/charts/antcd" --version "$version" > /dev/null 2>&1; then
+            echo "::error::Chart antcd:${version} already exists. Bump the version in chart/Chart.yaml and chart/values.yaml."
+            exit 1
+          fi
+
+          echo "version=${version}" >> $GITHUB_OUTPUT
+
+      # 1. Build and push Docker image tagged with the release version, latest and the SHA
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v7
         with:
           context: .
           push: true
           tags: |
+            ghcr.io/${{ steps.vars.outputs.owner }}/antcd:${{ steps.version.outputs.version }}
             ghcr.io/${{ steps.vars.outputs.owner }}/antcd:latest
             ghcr.io/${{ steps.vars.outputs.owner }}/antcd:${{ steps.vars.outputs.sha_short }}
 
       # 2. Package and push Helm chart
-      - name: Set up Helm
-        uses: azure/setup-helm@v5
-
       - name: Package and Push Helm Chart
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
           helm package chart
           helm push antcd-*.tgz oci://ghcr.io/${{ steps.vars.outputs.owner }}/charts
 
