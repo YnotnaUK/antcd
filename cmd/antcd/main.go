@@ -43,27 +43,29 @@ func main() {
 		}
 	}()
 
-	log.Printf("AntCD started. Polling %s every %v", cfg.Git.Repo, cfg.Git.PollInterval)
-	watcher := git.NewWatcher(cfg.Git.Repo, cfg.Git.Branch, cfg.Git.Token)
+	// Interim: only the first repo's first target is reconciled until multi-repo support lands.
+	repo := &cfg.Repos[0]
+	log.Printf("AntCD started. Polling %s every %v", repo.URL, repo.PollInterval)
+	watcher := git.NewWatcher(repo.URL, repo.Branch, repo.Token)
 
-	ticker := time.NewTicker(cfg.Git.PollInterval)
+	ticker := time.NewTicker(repo.PollInterval)
 	defer ticker.Stop()
 
 	// Initial reconcile
-	reconcile(watcher, applier, cfg)
+	reconcile(watcher, applier, repo)
 
 	for {
 		select {
 		case <-ticker.C:
-			reconcile(watcher, applier, cfg)
+			reconcile(watcher, applier, repo)
 		case <-syncTrigger:
 			log.Println("[TRIGGER] Manual/Webhook sync triggered!")
-			reconcile(watcher, applier, cfg)
+			reconcile(watcher, applier, repo)
 		}
 	}
 }
 
-func reconcile(w *git.Watcher, applier *k8s.Applier, cfg *config.Config) {
+func reconcile(w *git.Watcher, applier *k8s.Applier, repo *config.Repo) {
 	changed, commit, err := w.CheckForUpdates()
 	if err != nil {
 		log.Printf("[ERROR] Git check failed: %v", err)
@@ -94,8 +96,8 @@ func reconcile(w *git.Watcher, applier *k8s.Applier, cfg *config.Config) {
 		return
 	}
 
-	manifestDir := filepath.Join(tempDir, cfg.Git.Path)
-	if err := reconcileDirectory(manifestDir, applier, cfg.TargetNamespace); err != nil {
+	manifestDir := filepath.Join(tempDir, repo.Targets[0].Path)
+	if err := reconcileDirectory(manifestDir, applier, "default"); err != nil {
 		log.Printf("[ERROR] Reconciliation failed: %v. Will retry.", err)
 		return
 	}

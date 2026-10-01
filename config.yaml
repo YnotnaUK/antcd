@@ -1,9 +1,12 @@
-git:
-  repo: "https://github.com/ynotnauk/antcd.git"
-  branch: "main"
-  path: "./manifests"
-  pollInterval: "10s"
 server:
   port: 8080
   webhookSecret: "secret"
-targetNamespace: "default"
+repos:
+  - name: antcd
+    url: "https://github.com/ynotnauk/antcd.git"
+    branch: "main"
+    pollInterval: "10s"
+    targets:
+      - name: test-app
+        type: manifests
+        path: ./manifests
