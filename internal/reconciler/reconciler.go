@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ynotnauk/antcd/internal/config"
+	"github.com/ynotnauk/antcd/internal/helm"
 	"github.com/ynotnauk/antcd/internal/k8s"
 	"github.com/ynotnauk/antcd/internal/manifests"
 )
@@ -115,6 +116,14 @@ func (r *Repo) reconcileTarget(ctx context.Context, root string, t config.Target
 	switch t.Type {
 	case config.TargetTypeManifests:
 		items, err = manifests.Collect(filepath.Join(root, t.Path))
+	case config.TargetTypeHelm:
+		items, err = helm.Render(helm.Options{
+			Root:        root,
+			ChartPath:   filepath.Join(root, t.Path),
+			ReleaseName: t.ReleaseName,
+			ValuesFiles: t.ValuesFiles,
+			Values:      t.Values,
+		})
 	default:
 		err = fmt.Errorf("target type %q is not supported yet", t.Type)
 	}

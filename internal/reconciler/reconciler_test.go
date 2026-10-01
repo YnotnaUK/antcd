@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ynotnauk/antcd/internal/config"
@@ -152,5 +153,39 @@ func TestFanOut(t *testing.T) {
 	<-done
 	if len(b) != 1 {
 		t.Errorf("pending signal should be kept, len=%d", len(b))
+	}
+}
+
+func TestReconcileHelmTarget(t *testing.T) {
+	src := &fakeSource{changed: true, commit: "c1", files: map[string]string{
+		"chart/Chart.yaml":            "apiVersion: v2\nname: demo\nversion: 0.1.0\n",
+		"chart/values.yaml":           "name: default-name\n",
+		"chart/values-prod.yaml":      "name: prod-name\n",
+		"chart/templates/config.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ .Values.name }}-{{ .Release.Name }}\n",
+	}}
+	app := &fakeApplier{}
+	target := config.Target{
+		Name: "demo", Type: config.TargetTypeHelm, Path: "chart",
+		ReleaseName: "rel", ValuesFiles: []string{"values-prod.yaml"},
+	}
+	NewRepo(testRepo(target), src, app).Reconcile(context.Background())
+
+	got := app.applied[k8s.Scope{Repo: "r", Target: "demo"}]
+	if len(got) != 1 || !strings.Contains(got[0], "name: prod-name-rel") {
+		t.Errorf("applied = %q", got)
+	}
+	if len(src.recorded) != 1 || len(app.pruned) != 1 {
+		t.Errorf("recorded=%v pruned=%v", src.recorded, app.pruned)
+	}
+}
+
+func TestReconcileHelmTargetWithoutChart(t *testing.T) {
+	src := &fakeSource{changed: true, commit: "c1", files: map[string]string{"chart/readme.txt": "x"}}
+	target := config.Target{Name: "demo", Type: config.TargetTypeHelm, Path: "chart", ReleaseName: "rel"}
+	app := &fakeApplier{}
+	NewRepo(testRepo(target), src, app).Reconcile(context.Background())
+
+	if len(src.recorded) != 0 || len(app.pruned) != 0 {
+		t.Errorf("recorded=%v pruned=%v", src.recorded, app.pruned)
 	}
 }
