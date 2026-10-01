@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 const (
@@ -112,6 +113,7 @@ func (c *Config) validate() error {
 			errs = append(errs, fmt.Errorf("repos[%d]: duplicate name %q", i, r.Name))
 		}
 		repoNames[r.Name] = true
+		errs = append(errs, labelValueErrors(fmt.Sprintf("repo %q name", r.Name), r.Name)...)
 
 		if r.URL == "" {
 			errs = append(errs, fmt.Errorf("repo %q: url is required", r.Name))
@@ -131,6 +133,7 @@ func (c *Config) validate() error {
 				errs = append(errs, fmt.Errorf("repo %q targets[%d]: duplicate name %q", r.Name, j, t.Name))
 			}
 			targetNames[t.Name] = true
+			errs = append(errs, labelValueErrors(fmt.Sprintf("repo %q target %q name", r.Name, t.Name), t.Name)...)
 
 			if t.Path == "" {
 				errs = append(errs, fmt.Errorf("repo %q target %q: path is required", r.Name, t.Name))
@@ -147,4 +150,13 @@ func (c *Config) validate() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// labelValueErrors checks that v can be used as a Kubernetes label value, as names are stamped onto resources.
+func labelValueErrors(what, v string) []error {
+	var errs []error
+	for _, msg := range validation.IsValidLabelValue(v) {
+		errs = append(errs, fmt.Errorf("%s %q is not a valid label value: %s", what, v, msg))
+	}
+	return errs
 }

@@ -20,8 +20,36 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-const ManagedByLabel = "app.kubernetes.io/managed-by"
-const ManagedByValue = "antcd"
+const (
+	ManagedByLabel = "app.kubernetes.io/managed-by"
+	ManagedByValue = "antcd"
+	RepoLabel      = "antcd.io/repo"
+	TargetLabel    = "antcd.io/target"
+
+	// DefaultNamespace is used for namespaced resources that do not declare one.
+	DefaultNamespace = "default"
+)
+
+// Scope identifies the repo and target that own a set of applied resources.
+type Scope struct {
+	Repo   string
+	Target string
+}
+
+func (s Scope) selector() string {
+	return fmt.Sprintf("%s=%s,%s=%s,%s=%s", ManagedByLabel, ManagedByValue, RepoLabel, s.Repo, TargetLabel, s.Target)
+}
+
+func (s Scope) applyLabels(obj *unstructured.Unstructured) {
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	labels[ManagedByLabel] = ManagedByValue
+	labels[RepoLabel] = s.Repo
+	labels[TargetLabel] = s.Target
+	obj.SetLabels(labels)
+}
 
 type ResourceID struct {
 	GVR       schema.GroupVersionResource
@@ -63,8 +91,9 @@ func NewApplier() (*Applier, error) {
 	}, nil
 }
 
-// ApplyManifest injects the antcd label and applies using Server-Side Apply
-func (a *Applier) ApplyManifest(ctx context.Context, yamlData []byte, defaultNamespace string) (*ResourceID, error) {
+// ApplyManifest injects the antcd labels for scope and applies using Server-Side Apply.
+// Namespaced resources without a namespace are applied to DefaultNamespace.
+func (a *Applier) ApplyManifest(ctx context.Context, yamlData []byte, scope Scope) (*ResourceID, error) {
 	dec := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
 	obj := &unstructured.Unstructured{}
 
@@ -78,19 +107,13 @@ func (a *Applier) ApplyManifest(ctx context.Context, yamlData []byte, defaultNam
 		return nil, fmt.Errorf("mapping GVK to resource: %w", err)
 	}
 
-	// Inject the managed-by label
-	labels := obj.GetLabels()
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	labels[ManagedByLabel] = ManagedByValue
-	obj.SetLabels(labels)
+	scope.applyLabels(obj)
 
 	var dr dynamic.ResourceInterface
 	ns := obj.GetNamespace()
 	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
 		if ns == "" {
-			ns = defaultNamespace
+			ns = DefaultNamespace
 			obj.SetNamespace(ns)
 		}
 		dr = a.dynamicClient.Resource(mapping.Resource).Namespace(ns)
@@ -120,8 +143,9 @@ func (a *Applier) ApplyManifest(ctx context.Context, yamlData []byte, defaultNam
 	}, nil
 }
 
-// Prune deletes resources in the cluster that have the antcd label but are no longer in Git
-func (a *Applier) Prune(ctx context.Context, applied []ResourceID) error {
+// Prune deletes resources owned by scope that are no longer in Git.
+// Resources belonging to other repos or targets are never touched.
+func (a *Applier) Prune(ctx context.Context, scope Scope, applied []ResourceID) error {
 	appliedMap := make(map[string]bool)
 	uniqueGVRs := make(map[schema.GroupVersionResource]bool)
 
@@ -134,7 +158,7 @@ func (a *Applier) Prune(ctx context.Context, applied []ResourceID) error {
 	// Query each resource kind we manage
 	for gvr := range uniqueGVRs {
 		list, err := a.dynamicClient.Resource(gvr).List(ctx, metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("%s=%s", ManagedByLabel, ManagedByValue),
+			LabelSelector: scope.selector(),
 		})
 		if err != nil {
 			log.Printf("[WARN] Prune: Failed to list %s: %v", gvr.Resource, err)

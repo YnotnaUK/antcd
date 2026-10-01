@@ -92,7 +92,7 @@ func reconcile(w *git.Watcher, applier *k8s.Applier, repo *config.Repo) {
 	}
 
 	manifestDir := filepath.Join(tempDir, repo.Targets[0].Path)
-	if err := reconcileDirectory(manifestDir, applier, "default"); err != nil {
+	if err := reconcileDirectory(manifestDir, applier, k8s.Scope{Repo: repo.Name, Target: repo.Targets[0].Name}); err != nil {
 		log.Printf("[ERROR] Reconciliation failed: %v. Will retry.", err)
 		return
 	}
@@ -101,7 +101,7 @@ func reconcile(w *git.Watcher, applier *k8s.Applier, repo *config.Repo) {
 	log.Printf("[SUCCESS] Successfully reconciled commit %s", commit)
 }
 
-func reconcileDirectory(dir string, applier *k8s.Applier, defaultNamespace string) error {
+func reconcileDirectory(dir string, applier *k8s.Applier, scope k8s.Scope) error {
 	// 1. Collect all manifests
 	items, err := manifests.Collect(dir)
 	if err != nil {
@@ -116,7 +116,7 @@ func reconcileDirectory(dir string, applier *k8s.Applier, defaultNamespace strin
 	ctx := context.Background()
 
 	for _, item := range items {
-		resID, err := applier.ApplyManifest(ctx, item.Data, defaultNamespace)
+		resID, err := applier.ApplyManifest(ctx, item.Data, scope)
 		if err != nil {
 			return fmt.Errorf("applying %s (%s): %w", item.FileName, item.Kind, err)
 		}
@@ -125,7 +125,7 @@ func reconcileDirectory(dir string, applier *k8s.Applier, defaultNamespace strin
 	}
 
 	// 4. Prune resources deleted from Git
-	if err := applier.Prune(ctx, applied); err != nil {
+	if err := applier.Prune(ctx, scope, applied); err != nil {
 		log.Printf("[WARN] Pruning completed with warnings: %v", err)
 	}
 

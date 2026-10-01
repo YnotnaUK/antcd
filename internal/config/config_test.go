@@ -66,6 +66,8 @@ func TestParseErrors(t *testing.T) {
 		{"missing path", "repos: [{name: r, url: u, targets: [{name: a}]}]", "path is required"},
 		{"bad type", "repos: [{name: r, url: u, targets: [{name: a, type: kustomize, path: .}]}]", "unknown type"},
 		{"helm field on manifests", "repos: [{name: r, url: u, targets: [{name: a, path: ., valuesFiles: [v.yaml]}]}]", "only valid for type"},
+		{"bad repo label", "repos: [{name: 'my repo', url: u, targets: [{name: a, path: .}]}]", "valid label value"},
+		{"bad target label", "repos: [{name: r, url: u, targets: [{name: 'a/b', path: .}]}]", "valid label value"},
 		{"negative interval", "repos: [{name: r, url: u, pollInterval: -1s, targets: [{name: a, path: .}]}]", "pollInterval"},
 	}
 	for _, tt := range tests {
