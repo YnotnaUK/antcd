@@ -234,6 +234,17 @@ curl -i -X POST http://<antcd-host>:8080/api/v1/sync \
 - Every push to `main` re-runs CI. If it passes, the image (tagged with the version, `latest` and the short SHA, with provenance and SBOM) and the Helm chart are published, and a `v<version>` GitHub Release is created with the chart attached.
 - Before merging, set the same version in `chart/Chart.yaml` (`version` and `appVersion`) and `chart/values.yaml` (`image.tag`). The release fails if they disagree or the version is already published. Released versions are never deleted.
 
+### Dependabot updates
+
+Dependabot opens one grouped PR per week for Go modules and one for GitHub Actions. Merging to `main` releases, so each PR needs a version bump first:
+
+1. Check CI is green on the PR.
+2. Check out its branch (`gh pr checkout <number>`).
+3. Bump the version in `chart/Chart.yaml` (`version` and `appVersion`) and `chart/values.yaml` (`image.tag`), then commit and push.
+4. Wait for CI, then merge.
+
+Once you push to a Dependabot branch it stops updating that PR. Do not comment `@dependabot rebase` or `@dependabot recreate` afterwards, as they discard your commit. If the PR conflicts with `main`, resolve it yourself.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
